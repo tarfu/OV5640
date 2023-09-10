@@ -1,7 +1,4 @@
-use embedded_hal::{
-    blocking::i2c::{Read, Write},
-    digital::v2::OutputPin,
-};
+use embedded_hal::i2c::I2c;
 
 use core::convert::TryInto;
 
@@ -11,13 +8,10 @@ use crate::constants::*;
 pub enum SccbError<I2CE> {
     I2c(I2CE),
     InvalidId(u8),
-    Gpio,
 }
 
-pub struct Ov5640<I2C, PWDN, RST> {
+pub struct Ov5640<I2C> {
     i2c: I2C,
-    pwdn: PWDN,
-    rst: RST,
 }
 
 pub enum Resolution {
@@ -36,6 +30,7 @@ pub enum Format {
     Raw(RawOrder),
     Rgb565(Rgb565Order),
     Yuv422(Yuv422Order),
+    Jpeg,
 }
 
 pub enum RawOrder {
@@ -67,6 +62,7 @@ impl Format {
             Format::Raw(order) => order.to_hex(),
             Format::Rgb565(order) => 0x60 | order.to_hex(),
             Format::Yuv422(order) => 0x30 | order.to_hex(),
+            Format::Jpeg => 0x30 | 0,
         }
     }
 
@@ -75,6 +71,7 @@ impl Format {
             Format::Raw(_) => OV5640_FMT_MUX_RAW_DPC,
             Format::Rgb565(_) => OV5640_FMT_MUX_RGB,
             Format::Yuv422(_) => OV5640_FMT_MUX_YUV422,
+            Format::Jpeg => OV5640_FMT_MUX_JPEG,
         }
     }
 }
@@ -114,17 +111,15 @@ impl Yuv422Order {
     }
 }
 
-impl<I2C, E, PWDN, RST> Ov5640<I2C, PWDN, RST>
+impl<I2C, E> Ov5640<I2C>
 where
-    I2C: Read<Error = E> + Write<Error = E>,
-    PWDN: OutputPin,
-    RST: OutputPin,
+    I2C: I2c<Error = E>,
 {
-    pub fn new(i2c: I2C, pwdn: PWDN, rst: RST) -> Self
+    pub fn new(i2c: I2C) -> Self
     where
-        I2C: Read + Write,
+        I2C: I2c<Error = E>,
     {
-        Ov5640 { i2c, pwdn, rst }
+        Ov5640 { i2c }
     }
 
     pub fn init(&mut self, format: Format, resolution: Resolution) -> Result<(), SccbError<E>> {
@@ -154,24 +149,13 @@ where
         // configure the output format
         self.write_reg(OV5640_REG_FORMAT_00, format.format_bits())?;
         self.write_reg(OV5640_REG_ISP_FORMAT_MUX_CTRL, format.mux_bits())?;
+        if let Format::Jpeg = format {
+            for register in OV5640_FMT_JPEG_EXTRA.iter() {
+                self.write_reg(register.0, register.1)?;
+            }
+        }
 
         Ok(())
-    }
-
-    pub fn set_rst(&mut self, on: bool) -> Result<(), SccbError<E>> {
-        if on {
-            self.rst.set_high().map_err(|_| SccbError::Gpio)
-        } else {
-            self.rst.set_low().map_err(|_| SccbError::Gpio)
-        }
-    }
-
-    pub fn set_pwdn(&mut self, on: bool) -> Result<(), SccbError<E>> {
-        if on {
-            self.pwdn.set_high().map_err(|_| SccbError::Gpio)
-        } else {
-            self.pwdn.set_low().map_err(|_| SccbError::Gpio)
-        }
     }
 
     fn write_reg(&mut self, reg: u16, val: u8) -> Result<(), SccbError<E>> {
@@ -207,7 +191,7 @@ where
         Ok(buf[0])
     }
 
-    pub fn free(self) -> (I2C, PWDN, RST) {
-        (self.i2c, self.pwdn, self.rst)
+    pub fn free(self) -> I2C {
+        self.i2c
     }
 }
