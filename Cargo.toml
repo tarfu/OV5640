@@ -10,5 +10,8 @@ categories = ["embedded", "no-std"]
 
 [dependencies]
 embedded-hal = "1.0.0-rc.1"
+defmt-03 = {package = "defmt", version = "0.3", optional = true}
+
 
 [features]
+defmt-03 = ["embedded-hal/defmt-03", "dep:defmt-03"]

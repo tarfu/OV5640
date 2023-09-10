@@ -5,6 +5,7 @@ use core::convert::TryInto;
 use crate::constants::*;
 
 #[derive(Debug)]
+#[cfg_attr(feature = "defmt-03", derive(defmt-03::Format))]
 pub enum SccbError<I2CE> {
     I2c(I2CE),
     InvalidId(u8),
